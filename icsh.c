@@ -9,8 +9,8 @@
 void add_to_history(char **);
 char *read_line();
 char **split_line(char *);
-int exit_shell(char **);
 int execute(char **);
+char **get_last_command();
 
 /*--------------------*
  * HISTORY MANAGEMENT *
@@ -35,15 +35,24 @@ void add_to_history(char **args) {
 	fclose(history);
 }
 
+char **get_last_command() {
+	// Search through history file to get last command and execute it
+	
+	FILE *history = fopen(".icsh_history", "r");
+	char line[1024]={0,};
+	
+	while( fgets(line, 1024, history) !=NULL ) {}
+	
+	printf("%s", line);
+	
+	return split_line(line);
+	
+}
+
 /*-------------------*
  * BUILT IN COMMANDS *
  *-------------------*/
 
-int exit_shell(char **args) {
-	// Exit command
-	printf("Goodbye! :( \n");
-	return 0;
-}
 
 /*-----------------*
  * COMMAND PARSING *
@@ -135,12 +144,13 @@ char * * split_line(char * line) {
 
 int execute(char * * args) {
 
-	// Execute command using execvp and fork
+	// Execute command 
 	
 	pid_t cpid;
 	int status;
+	
 
-	if (strcmp(args, "\0") == 0) {
+	if (strcmp(args[0], "\0") == 0) {
 		// If user gives empty command just return so it takes them back to prompt
 		return 1;
 	}
@@ -148,7 +158,15 @@ int execute(char * * args) {
 	add_to_history(args);
 	
 	if (strcmp(args[0], "exit") == 0) {
-		return exit_shell(args);
+		if (args[1]) {
+			printf("Goodbye :( \n");
+			exit(atoi(args[1]));
+		}
+		else {
+			printf("Exit code not specified \n");
+			printf("Re-enter command with parameters in the form: exit <num> \n");
+			return 1;
+		}
 	}
 	
 	cpid = fork();
@@ -180,6 +198,10 @@ void loop() {
 		printf("icsh $: "); // Print command prompt symbol
 		line = read_line();
 		args = split_line(line);
+		if (strcmp(args[0], "!!") == 0) {
+			// If command is !! then repeat last command
+			args = get_last_command();
+		}
 		running = execute(args);
 		free(line);
 		free(args);
