@@ -6,10 +6,34 @@
 #define RED "\033[0;31m"
 #define RESET "\e[0m"
 
+void add_to_history(char **);
 char *read_line();
 char **split_line(char *);
 int exit_shell(char **);
 int execute(char **);
+
+/*--------------------*
+ * HISTORY MANAGEMENT *
+ *--------------------*/
+
+void add_to_history(char **args) {
+	// Adds user input to history file
+
+	FILE *history = fopen(".icsh_history", "a+");
+	int i = 0;
+	
+	while (args[i] != NULL) {
+		if (i > 0) {
+			// Add spaces between command args
+			fputs(" ", history);
+		}
+		// Add command arg to history file
+		fputs(args[i], history);
+		i++;
+	}
+	fputs("\n", history); // Add new line to history file after each command
+	fclose(history);
+}
 
 /*-------------------*
  * BUILT IN COMMANDS *
@@ -115,6 +139,13 @@ int execute(char * * args) {
 	
 	pid_t cpid;
 	int status;
+
+	if (strcmp(args, "\0") == 0) {
+		// If user gives empty command just return so it takes them back to prompt
+		return 1;
+	}
+	
+	add_to_history(args);
 	
 	if (strcmp(args[0], "exit") == 0) {
 		return exit_shell(args);
