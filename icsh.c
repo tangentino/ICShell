@@ -10,7 +10,9 @@ void add_to_history(char **);
 char *read_line();
 char **split_line(char *);
 int execute(char **);
-char **get_last_command();
+char **get_last_command(int);
+void scripted_loop(char *);
+void loop();
 
 /*--------------------*
  * HISTORY MANAGEMENT *
@@ -35,7 +37,7 @@ void add_to_history(char **args) {
 	fclose(history);
 }
 
-char **get_last_command() {
+char **get_last_command(int n) {
 	// Search through history file to get last command and execute it
 	
 	FILE *history = fopen(".icsh_history", "r");
@@ -43,7 +45,10 @@ char **get_last_command() {
 	
 	while( fgets(line, 1024, history) !=NULL ) {}
 	
-	printf("%s", line);
+	if (n) {
+		printf("%s", line);
+	}
+	fclose(history);
 	
 	return split_line(line);
 	
@@ -193,14 +198,14 @@ void loop() {
 	char * line;
 	char * * args;
 	int running = 1;
-
+	
 	do {
 		printf("icsh $: "); // Print command prompt symbol
 		line = read_line();
 		args = split_line(line);
 		if (strcmp(args[0], "!!") == 0) {
 			// If command is !! then repeat last command
-			args = get_last_command();
+			args = get_last_command(1);
 		}
 		running = execute(args);
 		free(line);
@@ -209,8 +214,37 @@ void loop() {
 
 }
 
-int main() {
+void scripted_loop(char *arg) {
+
+	FILE *script = fopen(arg, "r");
+	
+	if (script) {
+		char * * args;
+		char line[1024]={0,};
+		while(fgets(line, 1024, script) !=NULL ) {
+			// Read script line by line and do the command loop
+			// Kinda messy and redundant code but for now just want it to work
+
+			args = split_line(line);
+			if (strcmp(args[0], "!!") == 0) {
+				args = get_last_command(0);
+			}
+			execute(args);
+			free(args);
+		}
+		fclose(script);
+	}
+	else {
+		printf("Invalid file. Please try again :) \n");
+		exit(1);
+	}
+}
+
+int main(int argc, char *argv[]) {
 	printf("Starting IC shell... \n");
+	if (argv[1]) {
+		scripted_loop(argv[1]);
+	}
 	loop();
 	return 0;
 }
