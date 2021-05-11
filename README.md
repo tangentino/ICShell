@@ -1,5 +1,7 @@
 # ICCS Project 1 - IC Shell
 
+*NOTE: I already used fork() and execvp() for Milestone 1/2 so I didn't add anything for Milestone 3*
+
 All links used as reference or research:
 
 https://danishpraka.sh/2018/01/15/write-a-shell.html
