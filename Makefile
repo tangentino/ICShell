@@ -1,2 +1,2 @@
 ic_shell:
-	gcc icsh.c -o icsh
+	gcc icsh.c -o icsh 

@@ -43,6 +43,7 @@ void add_to_history(char **args) {
 
 char **get_last_command(int n) {
 	// Search through history file to get last command and execute it
+	// n = 0 means script mode
 	
 	FILE *history = fopen(".icsh_history", "r");
 	char line[1024]={0,};
@@ -166,12 +167,6 @@ int execute(char * * args) {
 	pid_t cpid;
 	int status;
 	
-
-	if (strcmp(args[0], "\0") == 0) {
-		// If user gives empty command just return so it takes them back to prompt
-		return 1;
-	}
-	
 	add_to_history(args);
 	
 	if (strcmp(args[0], "exit") == 0) {
@@ -215,11 +210,14 @@ void loop() {
 		printf("icsh $: "); // Print command prompt symbol
 		line = read_line();
 		args = split_line(line);
-		if (strcmp(args[0], "!!") == 0) {
-			// If command is !! then repeat last command
-			args = get_last_command(1);
+		if (strcmp((char*)args, "\0") != 0) {
+			// Only execute if command is not empty
+			if (strcmp(args[0], "!!") == 0) {
+				// If command is !! then repeat last command
+				args = get_last_command(1);
+			} 
+			running = execute(args);
 		}
-		running = execute(args);
 		free(line);
 		free(args);
 	} while (running);
@@ -238,10 +236,14 @@ void scripted_loop(char *arg) {
 			// Kinda messy and redundant code but for now just want it to work
 
 			args = split_line(line);
-			if (strcmp(args[0], "!!") == 0) {
-				args = get_last_command(0);
+			if (strcmp((char*)args, "\0") != 0) {
+				// Only execute if command is not empty
+				if (strcmp(args[0], "!!") == 0) {
+					// If command is !! then repeat last command
+					args = get_last_command(0);
+				} 
+				execute(args);
 			}
-			execute(args);
 			free(args);
 		}
 		fclose(script);
