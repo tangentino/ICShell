@@ -1,6 +1,9 @@
 #include <stdio.h> 
 #include <string.h> 
 #include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
 
 #define TOK_DELIM " \t\r\n"
 #define RED "\033[0;31m"
@@ -13,6 +16,7 @@ int execute(char **);
 char **get_last_command(int);
 void scripted_loop(char *);
 void loop();
+void signal_handler(int);
 
 /*--------------------*
  * HISTORY MANAGEMENT *
@@ -143,6 +147,14 @@ char * * split_line(char * line) {
 	
 }
 
+/*-----------------*
+ * SIGNAL HANDLING *
+ *-----------------*/
+
+void signal_handler(int signum) {
+	signal(SIGINT, signal_handler);
+	fflush(stdout);
+}
 /*-----------------*
  * SHELL EXECUTION *
  *-----------------*/
