@@ -154,7 +154,7 @@ char * * split_line(char * line) {
 
 void signal_handler(int signum) {
 	signal(SIGINT, signal_handler);
-	fflush(stdout);
+	printf("\n");
 }
 /*-----------------*
  * SHELL EXECUTION *
@@ -207,6 +207,7 @@ void loop() {
 	int running = 1;
 	
 	do {
+		signal(SIGINT,signal_handler);
 		printf("icsh $: "); // Print command prompt symbol
 		line = read_line();
 		args = split_line(line);
