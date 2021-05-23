@@ -4,11 +4,18 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #define TOK_DELIM " \t\r\n"
 #define RED "\033[0;31m"
 #define RESET "\e[0m"
 
+/*------------*
+ * INITIALIZE *
+ *------------*/
+ 
 void add_to_history(char **);
 char *read_line();
 char **split_line(char *);
@@ -17,6 +24,8 @@ char **get_last_command(int);
 void scripted_loop(char *);
 void loop();
 void signal_handler(int);
+
+int saved_stdout;
 
 /*--------------------*
  * HISTORY MANAGEMENT *
@@ -188,7 +197,43 @@ char* redirection(char *line) {
 	// Function checks if command has redirection symbol (">" or "<"
 	// If command has redirection symbol then trim it from the line
 	// e.g. "ls -l > some_file" becomes "ls -l somefile"
+	
+	char* c;
+	
+	// Check if command line wants '>' or '<' redirection or no redirect
+	if (strchr(line, '>')) {
+		c = ">";
+	}
+	else if (strchr(line, '<')) {
+		c = "<";
+	}
+	else {
+		c = NULL;
+	}
+	
+	if (c) {
+		char *token;
+		char *temp = (char *) malloc(1024);
+		strcpy(temp,line); // copy line because trying to access line directly would probably cause seg fault
+		
+		token = strtok(temp, c); // take part of string before '>' or '<'
+		char *command = token;
+		token = strtok(NULL, c); // take part of string after '>' or '<'
+		char *arg = token;
+		
+		if (strchr(c, '<')) {
+			input_redirection(arg);
+		}
+		else if (strchr(c, '>')) {
+			output_redirection(arg);
+		}
+		
+		free(temp);
+		return command;
+	}
+	return line;
 }
+
 /*-----------------*
  * SHELL EXECUTION *
  *-----------------*/
@@ -238,6 +283,7 @@ void loop() {
 	// Function for the main shell loop
 
 	char * line;
+	char * command;
 	char * * args;
 	int running = 1;
 	
@@ -246,7 +292,8 @@ void loop() {
 		signal(SIGTSTP,signal_handler);
 		printf("icsh $: "); // Print command prompt symbol
 		line = read_line();
-		args = split_line(line);
+		command = redirection(line);
+		args = split_line(command);
 		if (strcmp((char*)args, "\0") != 0) {
 			// Only execute if command is not empty
 			if (strcmp(args[0], "!!") == 0) {
@@ -256,7 +303,10 @@ void loop() {
 			running = execute(args);
 		}
 		free(line);
+		free(command);
 		free(args);
+		saved_stdout = dup(1);
+		dup2(saved_stdout, 1);
 	} while (running);
 
 }
