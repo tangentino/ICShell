@@ -23,3 +23,5 @@ https://stackoverflow.com/questions/58361506/save-history-command-on-simple-shel
 https://www.unix.com/shell-programming-and-scripting/24137-creating-command-history-feature-simple-unix-shell-using-c.html
 
 https://stackoverflow.com/questions/20268385/c-programming-getting-the-last-line-of-file/20268590
+
+https://stackoverflow.com/questions/11042218/c-restore-stdout-to-terminal

@@ -155,6 +155,40 @@ char * * split_line(char * line) {
 void signal_handler(int signum) {
 	printf("\n");
 }
+
+/*-----------------*
+ * I/O REDIRECTION *
+ *-----------------*/
+ 
+void input_redirection(char *filename) {
+	int in = open(filename, O_RDONLY);
+	
+	if (in <= 0) {
+		fprintf(stderr, "Couldn't open file\n");
+		exit(errno);
+	}
+	
+	dup2(in,0);
+	close(in);
+}
+
+void output_redirection(char *filename) {
+	int out = open(filename, O_TRUNC | O_CREAT | O_WRONLY, 0666);
+	
+	if (out <= 0) {
+		fprintf(stderr, "Couldn't open file\n");
+		exit(errno);
+	}
+	
+	dup2(out,1);
+	close(out);
+}
+
+char* redirection(char *line) {
+	// Function checks if command has redirection symbol (">" or "<"
+	// If command has redirection symbol then trim it from the line
+	// e.g. "ls -l > some_file" becomes "ls -l somefile"
+}
 /*-----------------*
  * SHELL EXECUTION *
  *-----------------*/
@@ -167,6 +201,8 @@ int execute(char * * args) {
 	int status;
 	
 	add_to_history(args);
+	
+	// Add redirection here
 	
 	if (strcmp(args[0], "exit") == 0) {
 		if (args[1]) {
