@@ -1,6 +1,7 @@
 # ICCS Project 1 - IC Shell
 
 *NOTE: I already used fork() and execvp() for Milestone 1/2 so I didn't add anything for Milestone 3*
+*SECOND NOTE: Very sorry for the ugly code. C is annoying. I hope anyone who has to read through this doesn't go blind :(*
 
 All links used as reference or research:
 
