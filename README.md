@@ -1,6 +1,7 @@
 # ICCS Project 1 - IC Shell
 
 *NOTE: I already used fork() and execvp() for Milestone 1/2 so I didn't add anything for Milestone 3*
+*SECOND NOTE: Very sorry for the ugly code. C is annoying. I hope anyone who has to read through this doesn't go blind :(*
 
 All links used as reference or research:
 
@@ -23,3 +24,7 @@ https://stackoverflow.com/questions/58361506/save-history-command-on-simple-shel
 https://www.unix.com/shell-programming-and-scripting/24137-creating-command-history-feature-simple-unix-shell-using-c.html
 
 https://stackoverflow.com/questions/20268385/c-programming-getting-the-last-line-of-file/20268590
+
+https://stackoverflow.com/questions/11042218/c-restore-stdout-to-terminal
+
+https://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whitespace-in-a-standard-way
