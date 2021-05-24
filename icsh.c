@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <ctype.h>
 
 #define TOK_DELIM " \t\r\n"
 #define RED "\033[0;31m"
@@ -24,8 +25,10 @@ char **get_last_command(int);
 void scripted_loop(char *);
 void loop();
 void signal_handler(int);
+char *trim_spaces(char *);
 
 int saved_stdout;
+int saved_stdin;
 
 /*--------------------*
  * HISTORY MANAGEMENT *
@@ -68,14 +71,37 @@ char **get_last_command(int n) {
 	
 }
 
-/*-------------------*
- * BUILT IN COMMANDS *
- *-------------------*/
-
-
 /*-----------------*
  * COMMAND PARSING *
  *-----------------*/
+ 
+char *trim_spaces(char *str) {
+	// Turns out i need to trim whitespace for it to read filename correctly
+	// Make copy of input str to avoid seg fault
+
+	char *temp = (char *) malloc(strlen(str)+1);
+	strcpy(temp,str);
+	
+	// Copied from https://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whitespace-in-a-standard-way
+	
+	char *end;
+
+	// Trim leading space
+	while(isspace((unsigned char)*temp)) temp++;
+
+	if(*temp == 0)  // All spaces?
+	return temp;
+
+	// Trim trailing space
+	end = temp + strlen(temp) - 1;
+	while(end > temp && isspace((unsigned char)*end)) end--;
+
+	// Write new null terminator character
+	end[1] = '\0';
+
+	return temp;
+}
+
 
 char * read_line() {
 
@@ -169,7 +195,10 @@ void signal_handler(int signum) {
  * I/O REDIRECTION *
  *-----------------*/
  
-void input_redirection(char *filename) {
+char* input_redirection(char *filename) {
+	// Returns string because I have to read the file for commands
+	// No idea how else to do this i have no idea how to use C
+	
 	int in = open(filename, O_RDONLY);
 	
 	if (in <= 0) {
@@ -213,13 +242,14 @@ char* redirection(char *line) {
 	
 	if (c) {
 		char *token;
-		char *temp = (char *) malloc(1024);
+		char *temp = (char *) malloc(strlen(line)+1);
+		
 		strcpy(temp,line); // copy line because trying to access line directly would probably cause seg fault
 		
 		token = strtok(temp, c); // take part of string before '>' or '<'
-		char *command = token;
+		char *command = trim_spaces(token);
 		token = strtok(NULL, c); // take part of string after '>' or '<'
-		char *arg = token;
+		char *arg = trim_spaces(token);
 		
 		if (strchr(c, '<')) {
 			input_redirection(arg);
@@ -227,7 +257,7 @@ char* redirection(char *line) {
 		else if (strchr(c, '>')) {
 			output_redirection(arg);
 		}
-		
+	
 		free(temp);
 		return command;
 	}
@@ -244,8 +274,6 @@ int execute(char * * args) {
 	
 	pid_t cpid;
 	int status;
-	
-	add_to_history(args);
 	
 	// Add redirection here
 	
@@ -286,11 +314,12 @@ void loop() {
 	char * command;
 	char * * args;
 	int running = 1;
-	
+
 	do {
 		signal(SIGINT,signal_handler);
 		signal(SIGTSTP,signal_handler);
 		printf("icsh $: "); // Print command prompt symbol
+		//fgets(line,1024,stdin);
 		line = read_line();
 		command = redirection(line);
 		args = split_line(command);
@@ -299,14 +328,13 @@ void loop() {
 			if (strcmp(args[0], "!!") == 0) {
 				// If command is !! then repeat last command
 				args = get_last_command(1);
-			} 
+			}
+			add_to_history(split_line(line));
 			running = execute(args);
 		}
-		free(line);
-		free(command);
-		free(args);
-		saved_stdout = dup(1);
 		dup2(saved_stdout, 1);
+		dup2(saved_stdin, 0);
+		free(args);
 	} while (running);
 
 }
@@ -328,7 +356,8 @@ void scripted_loop(char *arg) {
 				if (strcmp(args[0], "!!") == 0) {
 					// If command is !! then repeat last command
 					args = get_last_command(0);
-				} 
+				}
+				add_to_history(args); 
 				execute(args);
 			}
 			free(args);
@@ -342,6 +371,8 @@ void scripted_loop(char *arg) {
 }
 
 int main(int argc, char *argv[]) {
+	saved_stdout = dup(1);
+	saved_stdin = dup(0);
 	printf("Starting IC shell... \n");
 	if (argv[1]) {
 		scripted_loop(argv[1]);
