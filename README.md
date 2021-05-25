@@ -29,3 +29,7 @@ https://stackoverflow.com/questions/20268385/c-programming-getting-the-last-line
 https://stackoverflow.com/questions/11042218/c-restore-stdout-to-terminal
 
 https://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whitespace-in-a-standard-way
+
+https://stackoverflow.com/questions/20193464/how-to-get-the-exit-code-of-program-invoked-by-system-call
+
+

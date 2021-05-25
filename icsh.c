@@ -30,6 +30,8 @@ char *trim_spaces(char *);
 int saved_stdout;
 int saved_stdin;
 
+int previous_exit_code = 0;
+
 /*--------------------*
  * HISTORY MANAGEMENT *
  *--------------------*/
@@ -289,6 +291,12 @@ int execute(char * * args) {
 		}
 	}
 	
+	if ( (strcmp(args[0],"echo") == 0) && (strcmp(args[1],"$?") == 0) ) {
+		printf("%d \n",previous_exit_code);
+		previous_exit_code = 0;
+		return 1;
+	}
+	
 	cpid = fork();
 	
 	if (cpid == 0) {
@@ -300,7 +308,8 @@ int execute(char * * args) {
 	else if (cpid < 0)
 		printf(RED "Error forking" RESET "\n");
 	else {
-		waitpid(cpid, & status, WUNTRACED);
+		waitpid(cpid, & status, 0);
+		previous_exit_code = WEXITSTATUS(status);
 	}
 	
 	return 1;
