@@ -300,6 +300,8 @@ int execute(char * * args, int is_bgp) {
 	pid_t cpid;
 	int status;
 	
+	printf("BACKGROUND = %d \n",is_bgp);
+	
 	// Add redirection here
 	
 	if (strcmp(args[0], "exit") == 0) {
@@ -347,13 +349,14 @@ void loop() {
 	char * command2;
 	char * * args;
 	int running = 1;
-	int is_bgp = 0;
+	int is_bgp;
 
 	do {
 		signal(SIGINT,signal_handler);
 		signal(SIGTSTP,signal_handler);
 		printf("icsh $: "); // Print command prompt symbol
 		//fgets(line,1024,stdin);
+		is_bgp = 0;
 		line = read_line();
 		command1 = redirection(line);
 		if (line[strlen(line)-1] == '&') {
@@ -375,7 +378,6 @@ void loop() {
 		}
 		dup2(saved_stdout, 1);
 		dup2(saved_stdin, 0);
-		free(command1);
 		free(args);
 	} while (running);
 
@@ -388,15 +390,17 @@ void scripted_loop(char *arg) {
 	if (script) {
 		char * * args;
 		char line[1024]={0,};
+		int is_bgp;
+		char * command1;
+		char * command2;
 		while(fgets(line, 1024, script) !=NULL ) {
 			// Read script line by line and do the command loop
 			// Kinda messy and redundant code but for now just want it to work
-			int is_bgp = 0;
-			char * command1;
-			char * command2;
+			is_bgp = 0;
 			command1 = redirection(line);
-			if (line[strlen(line)-1] == '&') {
-				printf("WORKING AS INTENDED \n");
+			if (line[strlen(line)-2] == '&') {
+				// strlen(line)-2 instead of -1 because last character of line when using fgets is null I guess...?
+				// & at the end of the command is the 2nd to last character
 				command2 = background_execute(command1);
 				is_bgp = 1;
 			}
@@ -413,7 +417,6 @@ void scripted_loop(char *arg) {
 				add_to_history(args); 
 				execute(args, is_bgp);
 			}
-			free(command1);
 			free(args);
 		}
 		fclose(script);
