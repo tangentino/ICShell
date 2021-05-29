@@ -20,7 +20,7 @@
 void add_to_history(char **);
 char *read_line();
 char **split_line(char *);
-int execute(char **);
+int execute(char **, int);
 char **get_last_command(int);
 void scripted_loop(char *);
 void loop();
@@ -31,6 +31,13 @@ int saved_stdout;
 int saved_stdin;
 
 int previous_exit_code = 0;
+
+struct job {
+	char command[256];
+	int pid;
+	int job_id;
+	int status; // 0: Stopped, 1: BG, 2: FG
+};
 
 /*--------------------*
  * HISTORY MANAGEMENT *
@@ -266,11 +273,27 @@ char* redirection(char *line) {
 	return line;
 }
 
+/*----------------------------------------*
+ * FOREGROUND/BACKGROUND PROCESS HANDLING *
+ *----------------------------------------*/
+
+char* background_execute(char *line) {
+	// If last character of command is & then it's a background execute command
+	char *token;
+	char *temp = (char *) malloc(strlen(line)+1);
+	
+	strcpy(temp,line); 
+	
+	token = strtok(temp, "&"); // take part of string before '&' which is the command
+	char *command = trim_spaces(token);
+	return command;
+}
+
 /*-----------------*
  * SHELL EXECUTION *
  *-----------------*/
 
-int execute(char * * args) {
+int execute(char * * args, int is_bgp) {
 
 	// Execute command 
 	
@@ -320,9 +343,11 @@ void loop() {
 	// Function for the main shell loop
 
 	char * line;
-	char * command;
+	char * command1;
+	char * command2;
 	char * * args;
 	int running = 1;
+	int is_bgp = 0;
 
 	do {
 		signal(SIGINT,signal_handler);
@@ -330,8 +355,15 @@ void loop() {
 		printf("icsh $: "); // Print command prompt symbol
 		//fgets(line,1024,stdin);
 		line = read_line();
-		command = redirection(line);
-		args = split_line(command);
+		command1 = redirection(line);
+		if (line[strlen(line)-1] == '&') {
+			command2 = background_execute(command1);
+			is_bgp = 1;
+		}
+		else {
+			command2 = command1;
+		}
+		args = split_line(command2);
 		if (strcmp((char*)args, "\0") != 0) {
 			// Only execute if command is not empty
 			if (strcmp(args[0], "!!") == 0) {
@@ -339,10 +371,11 @@ void loop() {
 				args = get_last_command(1);
 			}
 			add_to_history(split_line(line));
-			running = execute(args);
+			running = execute(args, is_bgp);
 		}
 		dup2(saved_stdout, 1);
 		dup2(saved_stdin, 0);
+		free(command1);
 		free(args);
 	} while (running);
 
@@ -358,8 +391,19 @@ void scripted_loop(char *arg) {
 		while(fgets(line, 1024, script) !=NULL ) {
 			// Read script line by line and do the command loop
 			// Kinda messy and redundant code but for now just want it to work
-
-			args = split_line(line);
+			int is_bgp = 0;
+			char * command1;
+			char * command2;
+			command1 = redirection(line);
+			if (line[strlen(line)-1] == '&') {
+				printf("WORKING AS INTENDED \n");
+				command2 = background_execute(command1);
+				is_bgp = 1;
+			}
+			else {
+				command2 = command1;
+			}
+			args = split_line(command2);
 			if (strcmp((char*)args, "\0") != 0) {
 				// Only execute if command is not empty
 				if (strcmp(args[0], "!!") == 0) {
@@ -367,8 +411,9 @@ void scripted_loop(char *arg) {
 					args = get_last_command(0);
 				}
 				add_to_history(args); 
-				execute(args);
+				execute(args, is_bgp);
 			}
+			free(command1);
 			free(args);
 		}
 		fclose(script);
