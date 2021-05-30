@@ -20,7 +20,7 @@
 void add_to_history(char **);
 char *read_line();
 char **split_line(char *);
-int execute(char **, int);
+int execute(char *,int);
 char **get_last_command(int);
 void scripted_loop(char *);
 void loop();
@@ -293,17 +293,27 @@ char* background_execute(char *line) {
  * SHELL EXECUTION *
  *-----------------*/
 
-int execute(char * * args, int is_bgp) {
+int execute(char * line, int script_mode) {
 
 	// Execute command 
-	
+	char * * args;	
 	pid_t cpid;
 	int status;
+	int is_bgp;
 	
-	printf("BACKGROUND = %d \n",is_bgp);
-	
-	// Add redirection here
-	
+	if (line[strlen(line)-1] == '&') {
+		args = split_line(background_execute(line));
+		is_bgp = 1;
+	}
+	else {
+		args = split_line(line);
+		is_bgp = 0;
+	}
+
+	if (strcmp(args[0], "!!") == 0) {	
+		// If command is !! then repeat last command
+		args = get_last_command(1);
+	}
 	if (strcmp(args[0], "exit") == 0) {
 		if (args[1]) {
 			printf("Goodbye :( \n");
@@ -333,6 +343,8 @@ int execute(char * * args, int is_bgp) {
 	else if (cpid < 0)
 		printf(RED "Error forking" RESET "\n");
 	else {
+	
+		struct job current_job;
 		waitpid(cpid, & status, 0);
 		previous_exit_code = WEXITSTATUS(status);
 	}
@@ -345,40 +357,25 @@ void loop() {
 	// Function for the main shell loop
 
 	char * line;
-	char * command1;
-	char * command2;
-	char * * args;
+	char * command;
+	char * args;
 	int running = 1;
-	int is_bgp;
 
 	do {
 		signal(SIGINT,signal_handler);
 		signal(SIGTSTP,signal_handler);
 		printf("icsh $: "); // Print command prompt symbol
 		//fgets(line,1024,stdin);
-		is_bgp = 0;
 		line = read_line();
-		command1 = redirection(line);
-		if (line[strlen(line)-1] == '&') {
-			command2 = background_execute(command1);
-			is_bgp = 1;
-		}
-		else {
-			command2 = command1;
-		}
-		args = split_line(command2);
-		if (strcmp((char*)args, "\0") != 0) {
+		command = redirection(line);
+		args = trim_spaces(command);
+		if (strcmp(args, "\0") != 0) {
 			// Only execute if command is not empty
-			if (strcmp(args[0], "!!") == 0) {
-				// If command is !! then repeat last command
-				args = get_last_command(1);
-			}
 			add_to_history(split_line(line));
-			running = execute(args, is_bgp);
+			running = execute(args,1);
 		}
 		dup2(saved_stdout, 1);
 		dup2(saved_stdin, 0);
-		free(args);
 	} while (running);
 
 }
@@ -388,34 +385,19 @@ void scripted_loop(char *arg) {
 	FILE *script = fopen(arg, "r");
 	
 	if (script) {
-		char * * args;
+		char *  args;
 		char line[1024]={0,};
 		int is_bgp;
-		char * command1;
-		char * command2;
+		char * command;
 		while(fgets(line, 1024, script) !=NULL ) {
 			// Read script line by line and do the command loop
 			// Kinda messy and redundant code but for now just want it to work
-			is_bgp = 0;
-			command1 = redirection(line);
-			if (line[strlen(line)-2] == '&') {
-				// strlen(line)-2 instead of -1 because last character of line when using fgets is null I guess...?
-				// & at the end of the command is the 2nd to last character
-				command2 = background_execute(command1);
-				is_bgp = 1;
-			}
-			else {
-				command2 = command1;
-			}
-			args = split_line(command2);
-			if (strcmp((char*)args, "\0") != 0) {
+			command = redirection(line);
+			args = trim_spaces(command);
+			if (strcmp(args, "\0") != 0) {
 				// Only execute if command is not empty
-				if (strcmp(args[0], "!!") == 0) {
-					// If command is !! then repeat last command
-					args = get_last_command(0);
-				}
-				add_to_history(args); 
-				execute(args, is_bgp);
+				add_to_history(split_line(line)); 
+				execute(args,2);
 			}
 			free(args);
 		}
