@@ -284,7 +284,26 @@ char* redirection(char *line) {
 /*----------------------------------------*
  * FOREGROUND/BACKGROUND PROCESS HANDLING *
  *----------------------------------------*/
-
+char *parse_job_status(int job_status) {
+	if (job_status == 1) {
+		return "Running";
+	}
+	else if (job_status == 2) {
+		return "Stopped";
+	}
+	return "";
+}
+void print_jobs() {
+	for (int i = 1; i <= job_number; i++) {
+		pid_t pid = job_pid_list[i];
+		if (pid != 0) {
+			struct job* j = &jobs_list[pid];
+			if (j != NULL && j->status > 0) {
+				printf("[%d] %s              %s\n",i,parse_job_status(j->status),j->command);
+			}
+		}
+	}
+}
 char* background_execute(char *line) {
 	// If last character of command is & then it's a background execute command
 	char *token;
@@ -305,10 +324,13 @@ int execute(char * line, int script_mode) {
 
 	// Execute command 
 	char * command;
+	char *temp = (char *) malloc(strlen(line)+1);
 	char * * args;	
 	pid_t cpid;
 	int status;
 	int is_bgp;
+	
+	strcpy(temp,line);
 	
 	if (line[strlen(line)-1] == '&') {
 		command = background_execute(line);
@@ -320,10 +342,14 @@ int execute(char * line, int script_mode) {
 	}
 	
 	args = split_line(command);
-	
+
 	if (strcmp(args[0], "!!") == 0) {	
 		// If command is !! then repeat last command
 		args = get_last_command(1);
+	}
+	if (strcmp(args[0],"jobs") == 0) {
+		print_jobs();
+		return 1;
 	}
 	if (strcmp(args[0], "exit") == 0) {
 		if (args[1]) {
@@ -355,7 +381,7 @@ int execute(char * line, int script_mode) {
 		printf(RED "Error forking" RESET "\n");
 	else {
 		struct job current_job;
-		strcpy(current_job.command,command);
+		strcpy(current_job.command,temp);
 		current_job.pid = cpid;
 		current_job.status = is_bgp;
 		current_job.job_id = is_bgp ? ++job_number : 0;
@@ -367,14 +393,13 @@ int execute(char * line, int script_mode) {
 			printf("[%d] %d\n",job_number,cpid);
 		}
 		else {
-			printf("NOT BGP \n");
 			//tcsetpgrp(0,cpid);
 			waitpid(cpid, & status, 0);
 			//tcsetpgrp(0,ppid);
 			previous_exit_code = WEXITSTATUS(status);
 		}
 	}
-	
+	free(temp);
 	return 1;
 }
 
