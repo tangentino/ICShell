@@ -32,4 +32,6 @@ https://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whites
 
 https://stackoverflow.com/questions/20193464/how-to-get-the-exit-code-of-program-invoked-by-system-call
 
+https://github.com/nakarinh14/icsh/blob/main/icsh.c
+
 

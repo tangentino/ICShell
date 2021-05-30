@@ -12,7 +12,9 @@
 #define TOK_DELIM " \t\r\n"
 #define RED "\033[0;31m"
 #define RESET "\e[0m"
-
+#define CHAR_SIZE 256
+#define PID_SIZE 32768
+#define JOBS_SIZE 1000
 /*------------*
  * INITIALIZE *
  *------------*/
@@ -32,12 +34,18 @@ int saved_stdin;
 
 int previous_exit_code = 0;
 
+int job_number = 0;
+
 struct job {
-	char command[256];
+	char command[CHAR_SIZE];
 	int pid;
 	int job_id;
-	int status; // 0: Stopped, 1: BG, 2: FG
+	int status; // 0: foreground, 1: background, 2: stopped
 };
+
+struct job jobs_list[PID_SIZE]; // List of jobs. Index is PID
+pid_t job_pid_list[JOBS_SIZE]; // List of PIDs of jobs. Index is job ID
+pid_t ppid;
 
 /*--------------------*
  * HISTORY MANAGEMENT *
@@ -296,20 +304,23 @@ char* background_execute(char *line) {
 int execute(char * line, int script_mode) {
 
 	// Execute command 
+	char * command;
 	char * * args;	
 	pid_t cpid;
 	int status;
 	int is_bgp;
 	
 	if (line[strlen(line)-1] == '&') {
-		args = split_line(background_execute(line));
+		command = background_execute(line);
 		is_bgp = 1;
 	}
 	else {
-		args = split_line(line);
+		command = line;
 		is_bgp = 0;
 	}
-
+	
+	args = split_line(command);
+	
 	if (strcmp(args[0], "!!") == 0) {	
 		// If command is !! then repeat last command
 		args = get_last_command(1);
@@ -343,10 +354,25 @@ int execute(char * line, int script_mode) {
 	else if (cpid < 0)
 		printf(RED "Error forking" RESET "\n");
 	else {
-	
 		struct job current_job;
-		waitpid(cpid, & status, 0);
-		previous_exit_code = WEXITSTATUS(status);
+		strcpy(current_job.command,command);
+		current_job.pid = cpid;
+		current_job.status = is_bgp;
+		current_job.job_id = is_bgp ? ++job_number : 0;
+		jobs_list[cpid] = current_job;
+		setpgid(cpid,cpid);
+		
+		if (is_bgp) {
+			job_pid_list[job_number] = cpid;
+			printf("[%d] %d\n",job_number,cpid);
+		}
+		else {
+			printf("NOT BGP \n");
+			//tcsetpgrp(0,cpid);
+			waitpid(cpid, & status, 0);
+			//tcsetpgrp(0,ppid);
+			previous_exit_code = WEXITSTATUS(status);
+		}
 	}
 	
 	return 1;
@@ -410,6 +436,7 @@ void scripted_loop(char *arg) {
 }
 
 int main(int argc, char *argv[]) {
+	ppid = getpid();
 	saved_stdout = dup(1);
 	saved_stdin = dup(0);
 	printf("Starting IC shell... \n");
