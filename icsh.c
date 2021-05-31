@@ -12,7 +12,9 @@
 #define TOK_DELIM " \t\r\n"
 #define RED "\033[0;31m"
 #define RESET "\e[0m"
-
+#define CHAR_SIZE 256
+#define PID_SIZE 32768
+#define JOBS_SIZE 1000
 /*------------*
  * INITIALIZE *
  *------------*/
@@ -20,7 +22,7 @@
 void add_to_history(char **);
 char *read_line();
 char **split_line(char *);
-int execute(char **);
+int execute(char *,int);
 char **get_last_command(int);
 void scripted_loop(char *);
 void loop();
@@ -32,6 +34,19 @@ int saved_stdin;
 
 int previous_exit_code = 0;
 
+int job_number = 0;
+
+struct job {
+	char command[CHAR_SIZE];
+	int pid;
+	int job_id;
+	int status; // 0: foreground, 1: background, 2: stopped
+};
+
+struct job jobs_list[PID_SIZE]; // List of jobs. Index is PID
+pid_t job_pid_list[JOBS_SIZE]; // List of PIDs of jobs. Index is job ID
+pid_t ppid;
+
 /*--------------------*
  * HISTORY MANAGEMENT *
  *--------------------*/
@@ -41,6 +56,11 @@ void add_to_history(char **args) {
 
 	FILE *history = fopen(".icsh_history", "a+");
 	int i = 0;
+	
+	if (strcmp(args[0], "!!") == 0) {	
+		// If command is !! then dont count
+		return;
+	}
 	
 	while (args[i] != NULL) {
 		if (i > 0) {
@@ -189,8 +209,66 @@ char * * split_line(char * line) {
  * SIGNAL HANDLING *
  *-----------------*/
 
-void signal_handler(int signum) {
+void c_handler() {
 	printf("\n");
+}
+
+void z_handler() {
+	printf("\n");
+}
+
+void process_handler(int sig, siginfo_t *sip, void *null) {
+	int status = 0;
+	if (sip->si_pid == waitpid(sip->si_pid, &status, WNOHANG | WUNTRACED)) {
+		if (WIFEXITED(status) || WTERMSIG(status)) {
+			struct job* j = &jobs_list[sip->si_pid];
+			if (WIFEXITED(status) && j != NULL && j->status == 1 && j->job_id) {
+				// Job complete
+				printf("[%d] Done             %s\n",j->job_id,j->command); 
+				fflush(stdout);
+				
+				job_pid_list[j->job_id] = 0;
+				struct job temp;
+				temp.job_id = 0;
+				temp.pid = 0;
+				jobs_list[sip->si_pid] = temp;
+			}
+			else if (WIFSTOPPED(status) && j != NULL) {
+				if (!(j->job_id)) {
+					j->job_id = ++job_number;
+					job_pid_list[j->job_id] = sip->si_pid;
+				}
+				j->status = 2;
+				printf("\n[%d] Stopped             %s\n",j->job_id,j->command);
+				fflush(stdout);   
+			}
+		}
+	}
+}
+
+void signal_handling() {
+	struct sigaction c; // ctrl+c
+	struct sigaction z; // ctrl+z
+	struct sigaction sa; // process
+	
+	c.sa_handler = c_handler;
+	z.sa_handler = z_handler;
+	sa.sa_sigaction = process_handler;
+	
+	c.sa_flags = 0;
+	z.sa_flags = 0;
+	sa.sa_flags = SA_SIGINFO;
+	
+	sigemptyset(&c.sa_mask);
+	sigemptyset(&z.sa_mask);
+	sigfillset(&sa.sa_mask);
+	
+	signal(SIGTTOU, SIG_IGN);
+	signal(SIGTTIN, SIG_IGN);
+	
+	sigaction(SIGINT, &c,NULL);
+	sigaction(SIGTSTP, &z, NULL);
+	sigaction(SIGCHLD, &sa, NULL);
 }
 
 /*-----------------*
@@ -266,18 +344,147 @@ char* redirection(char *line) {
 	return line;
 }
 
+/*----------------------------------------*
+ * FOREGROUND/BACKGROUND PROCESS HANDLING *
+ *----------------------------------------*/
+ 
+char *parse_job_status(int job_status) {
+	// Turns job status int into job status string
+	if (job_status == 1) {
+		return "Running";
+	}
+	else if (job_status == 2) {
+		return "Stopped";
+	}
+	return "";
+}
+
+int parse_job_id(char *arg) {
+	char* ans;
+	if (arg == NULL || arg[0] != '%') {
+		printf("Invalid argument\n");
+		return 0;
+	}
+	ans = strtok(arg,"%");
+	if (!ans) {
+		printf("Job ID not found. Please enter job ID in the form %%id \n");
+		return 0;
+	}
+	return atoi(ans);
+}
+
+void print_jobs() {
+	// Prints out all current jobs
+	for (int i = 1; i <= job_number; i++) {
+		pid_t pid = job_pid_list[i];
+		if (pid != 0) {
+			struct job* j = &jobs_list[pid];
+			if (j != NULL && j->status > 0) {
+				printf("[%d] %s              %s\n",i,parse_job_status(j->status),j->command);
+			}
+		}
+	}
+}
+char* background_execute(char *line) {
+	// If last character of command is & then it's a background execute command
+	char *token;
+	char *temp = (char *) malloc(strlen(line)+1);
+	
+	strcpy(temp,line); 
+	
+	token = strtok(temp, "&"); // take part of string before '&' which is the command
+	char *command = trim_spaces(token);
+	return command;
+}
+
+void bg_command(char *arg) {
+	// Put job in background
+	int job_id = parse_job_id(arg);
+	pid_t pid = job_pid_list[job_id]; // Get the pid from job id
+	if (pid) {
+		struct job* j = &jobs_list[pid]; // Get job from pid
+		printf("[%d] %s &\n",j->job_id,j->command);
+		j->status = 1; // Change job status to background
+		kill(pid,SIGCONT); // Send SIGCONT so process resumes where it left off
+	}
+	else {
+		printf("Unable to find foreground job with ID %d\n",job_id);
+	}
+}
+
+void fg_command(char *arg) {
+	int job_id = parse_job_id(arg);
+	pid_t pid = job_pid_list[job_id];
+	if (pid) {
+		struct job* j = &jobs_list[pid];
+		j->status = 0; // Change status to foreground
+		printf("%s\n",j->command); // Print command to terminal
+		kill(pid,SIGCONT);
+		int status;
+		setpgid(pid,pid);
+		tcsetpgrp(0,pid);
+		waitpid(pid,&status,0);
+		waitpid(pid,&status,0);
+		tcsetpgrp(0,ppid);
+		previous_exit_code = WEXITSTATUS(status);
+	}
+	else {
+		printf("Unable to find background job with ID %d\n",job_id);
+	}
+}
 /*-----------------*
  * SHELL EXECUTION *
  *-----------------*/
 
-int execute(char * * args) {
+int execute(char * line, int script_mode) {
 
 	// Execute command 
-	
+	char * command;
+	char *temp = (char *) malloc(strlen(line)+1);
+	char * * args;	
 	pid_t cpid;
 	int status;
+	int is_bgp;
 	
-	// Add redirection here
+	strcpy(temp,line);
+	
+	
+	
+	if (line[strlen(line)-1] == '&') {
+		command = background_execute(line);
+		is_bgp = 1;
+	}
+	else {
+		command = line;
+		is_bgp = 0;
+	}
+	
+	args = split_line(command);
+	
+	if (strcmp(args[0], "!!") == 0) {	
+		// If command is !! then repeat last command
+		args = get_last_command(script_mode);
+	}
+	
+	add_to_history(args);
+	
+	if (strcmp(args[0],"jobs") == 0) {
+		// List all jobs command
+		print_jobs();
+		return 1;
+	}
+	
+	if (strcmp(args[0],"bg") == 0) {	
+		// bg % <job_id> command
+		bg_command(args[1]);
+		return 1;
+	}
+	
+	if (strcmp(args[0],"fg") == 0) {
+		// fg % <job_id> command
+		fg_command(args[1]);
+		return 1;
+	}
 	
 	if (strcmp(args[0], "exit") == 0) {
 		if (args[1]) {
@@ -308,10 +515,26 @@ int execute(char * * args) {
 	else if (cpid < 0)
 		printf(RED "Error forking" RESET "\n");
 	else {
-		waitpid(cpid, & status, 0);
-		previous_exit_code = WEXITSTATUS(status);
+		struct job current_job;
+		strcpy(current_job.command,temp);
+		current_job.pid = cpid;
+		current_job.status = is_bgp;
+		current_job.job_id = is_bgp ? ++job_number : 0;
+		jobs_list[cpid] = current_job;
+		setpgid(cpid,cpid);
+		
+		if (is_bgp) {
+			job_pid_list[job_number] = cpid;
+			printf("[%d] %d\n",job_number,cpid);
+		}
+		else {
+			tcsetpgrp(0,cpid);
+			waitpid(cpid, & status, 0);
+			tcsetpgrp(0,ppid);
+			previous_exit_code = WEXITSTATUS(status);
+		}
 	}
-	
+	free(temp);
 	return 1;
 }
 
@@ -321,29 +544,21 @@ void loop() {
 
 	char * line;
 	char * command;
-	char * * args;
+	char * args;
 	int running = 1;
 
 	do {
-		signal(SIGINT,signal_handler);
-		signal(SIGTSTP,signal_handler);
 		printf("icsh $: "); // Print command prompt symbol
 		//fgets(line,1024,stdin);
 		line = read_line();
 		command = redirection(line);
-		args = split_line(command);
-		if (strcmp((char*)args, "\0") != 0) {
+		args = trim_spaces(command);
+		if (strcmp(args, "\0") != 0) {
 			// Only execute if command is not empty
-			if (strcmp(args[0], "!!") == 0) {
-				// If command is !! then repeat last command
-				args = get_last_command(1);
-			}
-			add_to_history(split_line(line));
-			running = execute(args);
+			running = execute(args,1);
 		}
 		dup2(saved_stdout, 1);
 		dup2(saved_stdin, 0);
-		free(args);
 	} while (running);
 
 }
@@ -353,21 +568,18 @@ void scripted_loop(char *arg) {
 	FILE *script = fopen(arg, "r");
 	
 	if (script) {
-		char * * args;
+		char *  args;
 		char line[1024]={0,};
+		int is_bgp;
+		char * command;
 		while(fgets(line, 1024, script) !=NULL ) {
 			// Read script line by line and do the command loop
 			// Kinda messy and redundant code but for now just want it to work
-
-			args = split_line(line);
-			if (strcmp((char*)args, "\0") != 0) {
-				// Only execute if command is not empty
-				if (strcmp(args[0], "!!") == 0) {
-					// If command is !! then repeat last command
-					args = get_last_command(0);
-				}
-				add_to_history(args); 
-				execute(args);
+			command = redirection(line);
+			args = trim_spaces(command);
+			if (strcmp(args, "\0") != 0) {
+				// Only execute if command is not empty 
+				execute(args,0);
 			}
 			free(args);
 		}
@@ -380,6 +592,8 @@ void scripted_loop(char *arg) {
 }
 
 int main(int argc, char *argv[]) {
+	ppid = getpid();
+	signal_handling();
 	saved_stdout = dup(1);
 	saved_stdin = dup(0);
 	printf("Starting IC shell... \n");
